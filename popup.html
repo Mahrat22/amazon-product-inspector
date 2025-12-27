@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amazon Inspector</title>
+  <link rel="stylesheet" href="popup.css" />
+  <script src="popup.js" defer></script>
+</head>
+
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Amazon Product Inspector</h1>
+      <p class="subtitle">Fast FBA research tool</p>
+    </header>
+
+    <div class="top-actions">
+      <button id="inspect-btn" class="main-btn">Inspect This Product</button>
+      <button id="settings-btn" class="ghost-btn" title="Settings">⚙</button>
+    </div>
+
+    <div id="loading-spinner" class="spinner"></div>
+
+    <!-- Upgrade overlay -->
+    <div id="upgrade-overlay" class="overlay hidden">
+      <div class="overlay-card">
+        <h2>Go Pro</h2>
+        <p id="overlay-msg">Unlock Pro features & unlimited saving.</p>
+        <div class="overlay-actions">
+          <button id="upgrade-btn" class="main-btn">Upgrade</button>
+          <button id="close-overlay-btn" class="ghost-btn">Not now</button>
+        </div>
+        <p class="overlay-footnote">Tip: Enable Dev Mode in Settings for testing.</p>
+      </div>
+    </div>
+
+    <!-- Compare modal -->
+    <div id="compare-modal" class="overlay hidden">
+      <div class="overlay-card overlay-wide">
+        <div class="compare-head">
+          <h2 style="margin:0;">Compare</h2>
+          <button id="close-compare-btn" class="ghost-btn" title="Close">✕</button>
+        </div>
+
+        <div id="compare-meta" class="subtext" style="margin-top:8px;"></div>
+
+        <div class="compare-wrap">
+          <div id="compare-table"></div>
+        </div>
+
+        <div class="overlay-actions" style="margin-top:12px;">
+          <button id="copy-compare-btn" class="main-btn pro-only">Copy Compare Summary</button>
+          <button id="close-compare-btn-2" class="ghost-btn">Close</button>
+        </div>
+
+        <p class="overlay-footnote">Compare shows selected items (max 5). Copy is Pro.</p>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button id="tab-overview" class="tab active">Overview</button>
+      <button id="tab-list" class="tab">Research List</button>
+    </div>
+
+    <!-- OVERVIEW -->
+    <div id="panel-overview" class="panel">
+      <div id="results" class="results hidden">
+        <div class="pill-row">
+          <span id="plan-pill" class="pill">Free</span>
+          <span id="usage-pill" class="pill muted">0/30 today</span>
+          <span id="saved-pill" class="pill muted">Saved: 0</span>
+        </div>
+
+        <!-- SIMPLE: Product card -->
+        <div class="card">
+          <h2>Product</h2>
+          <div id="basic-info"></div>
+
+          <div class="mini-actions">
+            <button id="save-btn" class="mini-btn" title="Save to Research List">Save</button>
+            <button id="keepa-btn" class="mini-btn hidden">Open Keepa →</button>
+            <button id="copy-btn" class="mini-btn pro-only" title="Copy summary (Pro)">Copy</button>
+          </div>
+
+          <div id="save-hint" class="hint hidden"></div>
+          <div id="pro-hint" class="hint hidden">Pro feature. Upgrade to unlock.</div>
+        </div>
+
+        <!-- SIMPLE: Opportunity -->
+        <div class="card">
+          <h2>Opportunity</h2>
+          <div id="opportunity"></div>
+          <div id="opportunity-notes" class="subtext"></div>
+        </div>
+
+        <!-- ADVANCED (collapsed) -->
+        <button id="adv-toggle" class="accordion">
+          Advanced <span id="adv-arrow">▾</span>
+        </button>
+
+        <div id="adv-panel" class="accordion-panel hidden">
+          <div class="card">
+            <h2>Listing Quality (SEO)</h2>
+            <div id="seo-score"></div>
+            <div id="seo-notes" class="subtext"></div>
+          </div>
+
+          <div class="card">
+            <h2>Customer Complaints</h2>
+            <div id="complaints"></div>
+            <div class="subtext">Tip: Keyword-based signals from visible reviews only.</div>
+          </div>
+
+          <div class="card">
+            <h2>Recent Reviews</h2>
+            <div id="reviews"></div>
+          </div>
+
+          <div class="card profit-card hidden" id="profit-calc">
+            <h2>Profit Calculator (Pro estimate)</h2>
+
+            <div class="input-grid">
+              <div class="input-group">
+                <label>Your Cost ($)</label>
+                <input type="number" id="cost-input" placeholder="e.g. 12.50" step="0.01">
+              </div>
+
+              <div class="input-group">
+                <label>Size Tier</label>
+                <select id="size-select">
+                  <option value="small">Small Standard (&lt;1 lb)</option>
+                  <option value="large">Large Standard (&gt;1 lb)</option>
+                </select>
+              </div>
+
+              <div class="input-group">
+                <label>Monthly Storage ($)</label>
+                <input type="number" id="storage-input" placeholder="~0.78" step="0.01" value="0.78">
+              </div>
+            </div>
+
+            <button id="calc-btn" class="calc-btn">Calculate</button>
+            <div id="profit-result" class="profit-result"></div>
+
+            <div class="subtext">This is a quick estimate. Real fees vary by category/size/fulfillment.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESEARCH LIST -->
+    <div id="panel-list" class="panel hidden">
+      <div class="card">
+        <h2>Research List</h2>
+        <div class="subtext" id="list-subtext"></div>
+
+        <!-- SIMPLE CONTROLS -->
+        <div class="controls simple-controls">
+          <div class="control-row">
+            <div class="control">
+              <label>Sort</label>
+              <select id="sort-select">
+                <option value="savedAt_desc">Newest</option>
+                <option value="opportunity_desc">Opportunity (High → Low)</option>
+                <option value="bsr_asc">BSR (Low → High)</option>
+                <option value="reviews_asc">Reviews (Low → High)</option>
+                <option value="rating_desc">Rating (High → Low)</option>
+                <option value="price_asc">Price (Low → High)</option>
+                <option value="price_desc">Price (High → Low)</option>
+              </select>
+            </div>
+
+            <div class="control toggle">
+              <label>Compact</label>
+              <div class="toggle-wrap">
+                <input type="checkbox" id="compact-toggle">
+                <span class="toggle-label">Rows</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-actions">
+            <button id="refresh-list-btn" class="mini-btn">Refresh</button>
+            <button id="compare-selected-btn" class="mini-btn pro-only">Compare</button>
+            <button id="clear-list-btn" class="mini-btn danger">Clear</button>
+          </div>
+
+          <div id="top-picks" class="top-picks"></div>
+
+          <!-- ADVANCED FILTERS (collapsed) -->
+          <button id="list-adv-toggle" class="accordion small-accordion">
+            Advanced Filters <span id="list-adv-arrow">▾</span>
+          </button>
+
+          <div id="list-adv-panel" class="accordion-panel hidden">
+            <div class="control-row">
+              <div class="control">
+                <label>Min Rating</label>
+                <input id="min-rating" type="number" step="0.1" placeholder="e.g. 4.2">
+              </div>
+
+              <div class="control">
+                <label>Max Reviews</label>
+                <input id="max-reviews" type="number" step="1" placeholder="e.g. 500">
+              </div>
+
+              <div class="control">
+                <label>Min Opp</label>
+                <input id="min-opp" type="number" step="1" placeholder="e.g. 60">
+              </div>
+            </div>
+
+            <div class="control-row" style="margin-top:8px;">
+              <label class="checkbox">
+                <input type="checkbox" id="hide-no-price">
+                Hide “Price not found”
+              </label>
+
+              <label class="checkbox">
+                <input type="checkbox" id="hide-range">
+                Hide “range” prices
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div id="list-container" class="list-container"></div>
+
+        <div class="subtext" style="margin-top:10px;">
+          Free: save up to <strong>10</strong> items. Pro: unlimited. Compare + Copy + Profit are Pro.
+        </div>
+      </div>
+    </div>
+
+    <div id="error-msg" class="error"></div>
+
+    <footer class="footer">
+      <p>Free: 30 inspections/day + 10 saved — Pro: Unlimited + Profit + Copy + Compare</p>
+    </footer>
+  </div>
+</body>
+</html>
