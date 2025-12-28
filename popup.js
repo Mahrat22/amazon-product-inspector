@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const compareSelectedBtn = el('compare-selected-btn');
   const topPicksDiv = el('top-picks');
 
-  // Controls (some in advanced)
+  // Controls
   const sortSelect = el('sort-select');
   const compactToggle = el('compact-toggle');
   const minRatingInput = el('min-rating');
@@ -133,7 +133,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  // Default: advanced panels collapsed
   let advOpen = false;
   let listAdvOpen = false;
   setAccordion(advPanel, advArrow, advOpen);
@@ -176,7 +175,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await renderSavedList();
   });
 
-  // Scoring (unchanged)
   function seoScore(title, bullets, brand) {
     const t = safeText(title).trim();
     const b = Array.isArray(bullets) ? bullets : [];
@@ -189,7 +187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     else { score += 5; notes.push("Very short title."); }
 
     if (safeText(brand).trim().length > 0) { score += 10; notes.push("Brand detected."); }
-    else { notes.push("Brand not detected (could be missing)."); }
+    else { notes.push("Brand not detected."); }
 
     if (b.length >= 5) { score += 20; notes.push("5+ bullet points detected."); }
     else if (b.length >= 3) { score += 12; notes.push("3–4 bullet points detected."); }
@@ -201,7 +199,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const uniqRatio = words.length ? (uniq.size / words.length) : 0;
     if (uniqRatio >= 0.75) { score += 20; notes.push("Good keyword variety."); }
     else if (uniqRatio >= 0.6) { score += 12; notes.push("Moderate keyword variety."); }
-    else { score += 6; notes.push("Title may be repetitive / stuffed."); }
+    else { score += 6; notes.push("Title may be repetitive."); }
 
     const attrHits = [
       /pack|pcs|pieces|count/i,
@@ -237,7 +235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     else if (reviews < 800) { score += 20; notes.push("Medium competition (200–800)."); }
     else { score += 10; notes.push("High competition (800+)."); }
 
-    if (bsrNum == null) { score += 8; notes.push("BSR not found (demand unknown)."); }
+    if (bsrNum == null) { score += 8; notes.push("BSR not found."); }
     else if (bsrNum < 5000) { score += 35; notes.push("Very strong demand (BSR < 5k)."); }
     else if (bsrNum < 20000) { score += 28; notes.push("Strong demand (BSR < 20k)."); }
     else if (bsrNum < 50000) { score += 18; notes.push("Moderate demand (BSR < 50k)."); }
@@ -271,7 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       .map(b => ({ ...b, count: counts[b.key] }))
       .sort((a, c) => c.count - a.count)
       .filter(x => x.count > 0)
-      .slice(0, 2); // keep it simple: top 2 only
+      .slice(0, 2);
   }
 
   function renderBasicInfo(p) {
@@ -297,9 +295,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedCount = Array.isArray(stored.savedItems) ? stored.savedItems.length : 0;
 
     planPill.textContent = isPro ? 'Pro' : 'Free';
-    planPill.style.background = isPro ? 'rgba(52,168,83,0.12)' : 'rgba(255,153,0,0.12)';
-    planPill.style.borderColor = isPro ? 'rgba(52,168,83,0.25)' : 'rgba(255,153,0,0.25)';
-    planPill.style.color = isPro ? '#1e7e34' : '#b45f00';
 
     usagePill.textContent = isPro ? 'Unlimited' : `${Math.min(usageCount, FREE_DAILY_LIMIT)}/${FREE_DAILY_LIMIT} today`;
     savedPill.textContent = isPro ? `Saved: ${savedCount} (∞)` : `Saved: ${savedCount}/${FREE_SAVED_LIMIT}`;
@@ -322,12 +317,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       return await chrome.tabs.sendMessage(tabId, { action: 'getProductData' });
     } catch {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
-      return await chrome.tabs.sendMessage(tabId, { action: 'getProductData' });
+      // If content script isn't ready, just fail gracefully.
+      throw new Error("Could not connect to page. Refresh the Amazon tab and try again.");
     }
   }
 
-  // List prefs
   const defaultPrefs = {
     sort: 'savedAt_desc',
     compact: false,
@@ -447,15 +441,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     return keys.filter(Boolean);
   }
 
+  // ✅ FIXED COMPARE TABLE (no overlap)
   function buildCompareTable(items) {
     const headers = items.map(it => {
-      const t = (it.title || 'Untitled').slice(0, 38) + ((it.title || '').length > 38 ? '…' : '');
+      const titleSafe = esc(it.title || 'Untitled');
+      const priceSafe = esc(it.price || '—');
+      const rangeNote = it.priceIsRange ? ' (range)' : '';
       return `
         <th>
-          <div style="font-weight:900; line-height:1.2;">${esc(t)}</div>
-          <div style="font-size:11px; color:#68707a; margin-top:6px;">
-            ${esc(it.price || '—')}${it.priceIsRange ? ' (range)' : ''}
-          </div>
+          <div class="compare-h-title">${titleSafe}</div>
+          <div class="compare-h-price">${priceSafe}${rangeNote}</div>
         </th>
       `;
     }).join('');
@@ -469,13 +464,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       <table class="compare-table">
         <thead>
           <tr>
-            <th style="min-width:140px;">Metric</th>
+            <th class="compare-k">Metric</th>
             ${headers}
           </tr>
         </thead>
         <tbody>
           ${row('ASIN', it => it.asin ? `<code>${esc(it.asin)}</code>` : '—')}
           ${row('Variant', it => esc(it.selectedVariant || '—'))}
+          ${row('Price', it => esc(it.price || '—') + (it.priceIsRange ? ' (range)' : ''))}
           ${row('Rating', it => esc(it.rating || '—'))}
           ${row('Reviews', it => esc(it.reviewCountText || '—'))}
           ${row('BSR #', it => {
@@ -571,6 +567,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     buildTopPicks(filtered);
 
+    if (!filtered.length) {
+      listContainer.innerHTML = `<div class="hint">No items match your filters.</div>`;
+      return;
+    }
+
     const compact = !!prefs.compact;
 
     listContainer.innerHTML = filtered.map(item => {
@@ -590,15 +591,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       `;
 
       if (compact) {
-        const smallTitle = (item.title || '').slice(0, 52) + ((item.title || '').length > 52 ? '…' : '');
+        const smallTitle = (item.title || '').slice(0, 52) + ((item.title || '').强调 ? '…' : '');
         const line1 = `${esc(price)}${rangeNote} • ${esc(rating)} • ${esc(reviews)} • Opp ${esc(String(item.opportunityScore ?? '—'))}`;
         const line2 = `ASIN ${esc(item.asin || '—')} • BSR ${esc(String(parseBsr(item.bsr) || '—'))}`;
-
         return `
           <div class="row-item">
             ${selectorHtml}
-            <div>
-              <div class="row-title">${esc(smallTitle)}</div>
+            <div style="flex:1;">
+              <div class="row-title">${esc((item.title || '').slice(0, 52))}${(item.title || '').length > 52 ? '…' : ''}</div>
               <div class="row-sub">${line1}</div>
               <div class="row-sub">${line2}</div>
             </div>
@@ -674,7 +674,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     sortSelect?.addEventListener('change', () => update({ sort: sortSelect.value }));
     compactToggle?.addEventListener('change', () => update({ compact: compactToggle.checked }));
 
-    // advanced filters still work (but hidden by default)
     minRatingInput?.addEventListener('input', () => update({ minRating: minRatingInput.value.trim() }));
     maxReviewsInput?.addEventListener('input', () => update({ maxReviews: maxReviewsInput.value.trim() }));
     minOppInput?.addEventListener('input', () => update({ minOpp: minOppInput.value.trim() }));
@@ -689,7 +688,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await renderSavedList();
   });
 
-  // Inspect flow
   inspectBtn?.addEventListener('click', async () => {
     errorDiv.textContent = '';
     saveHint?.classList.add('hidden');
@@ -703,7 +701,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       currentTabUrl = tab.url;
 
-      // Daily usage gate
       const today = new Date().toISOString().slice(0, 10);
       const stored = await chrome.storage.sync.get(['usageDate', 'usageCount', 'isPro', 'devMode']);
       let { usageDate, usageCount: uc = 0 } = stored;
@@ -721,12 +718,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      // Read product data
       const response = await getProductDataFromTab(tab.id);
       product = response?.data || {};
       if (!product.title || product.title === 'No title found') throw new Error('Could not read product data');
 
-      // Scores
       product.reviewCount = parseReviewCount(product.reviewCountText);
 
       const seo = seoScore(product.title, product.bullets || [], product.brand);
@@ -735,7 +730,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const opp = opportunityScore({ rating: product.rating, reviewCount: product.reviewCount, bsr: product.bsr });
       product._opportunityScore = opp.score;
 
-      // SIMPLE render
       basicDiv.innerHTML = renderBasicInfo(product);
 
       const label = opp.score >= 80 ? 'Excellent' : opp.score >= 60 ? 'Good' : 'Fair';
@@ -745,7 +739,6 @@ document.addEventListener('DOMContentLoaded', async () => {
          <div style="font-weight:900;margin-top:6px;">${label} Opportunity</div>`;
       opportunityNotes.innerHTML = opp.notes.map(n => `• ${esc(n)}`).join('<br>');
 
-      // ADVANCED render
       seoScoreDiv.innerHTML =
         `<div style="font-size:28px;font-weight:900;color:${seo.score >= 80 ? '#1e7e34' : seo.score >= 60 ? '#b45f00' : '#d93025'}">${seo.score}/100</div>`;
       seoNotesDiv.innerHTML = seo.notes.map(n => `• ${esc(n)}`).join('<br>');
@@ -760,7 +753,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         ? `<ul>${reviews.slice(0, 6).map(r => `<li>${esc(r.slice(0, 160))}${r.length > 160 ? '…' : ''}</li>`).join('')}</ul>`
         : `<div class="subtext">No reviews visible on this page.</div>`;
 
-      // Keepa
       const asin = product.asin || tab.url.match(/\/dp\/([A-Z0-9]{10})/)?.[1];
       if (asin) {
         keepaBtn.onclick = () => chrome.tabs.create({ url: `https://keepa.com/#!product/1-${asin}` });
@@ -769,7 +761,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         keepaBtn.classList.add('hidden');
       }
 
-      // Copy summary (Pro)
       copyBtn.onclick = async () => {
         if (!isPro) return showOverlay("Copy is Pro-only. Upgrade to unlock.");
 
@@ -789,7 +780,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => (copyBtn.textContent = "Copy"), 1200);
       };
 
-      // Save (Free 10, Pro unlimited)
       saveBtn.onclick = async () => {
         saveHint?.classList.add('hidden');
 
@@ -827,22 +817,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         await chrome.storage.sync.set({ savedItems: next });
 
         saveHint.textContent = already ? 'Updated ✅' : 'Saved ✅';
-        saveHint.style.color = '#1e7e34';
-        saveHint.style.background = 'rgba(52,168,83,0.08)';
-        saveHint.style.border = '1px solid rgba(52,168,83,0.14)';
         saveHint.classList.remove('hidden');
-
-        setTimeout(() => {
-          saveHint?.classList.add('hidden');
-          saveHint.style.color = '';
-          saveHint.style.background = '';
-          saveHint.style.border = '';
-        }, 1400);
+        setTimeout(() => saveHint?.classList.add('hidden'), 1400);
 
         await updatePlanUI();
       };
 
-      // Profit calc (Pro) — stays in Advanced
       calcBtn.onclick = () => {
         if (!isPro) return showOverlay("Profit Calculator is Pro-only.");
 
@@ -852,7 +832,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (cost <= 0 || !isFinite(price) || price <= 0) {
           profitResult.innerHTML = 'Enter a valid cost (and make sure price is visible).';
-          profitResult.style.color = '#232f3e';
           return;
         }
 
@@ -865,7 +844,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           `Net Profit: <strong>$${net.toFixed(2)}</strong><br>` +
           `ROI: <strong>${roi}%</strong><br>` +
           `Referral: $${referral.toFixed(2)} | FBA: $${fbaFee.toFixed(2)} | Storage: $${storage.toFixed(2)}`;
-        profitResult.style.color = net >= 0 ? '#1e7e34' : '#d93025';
       };
 
       results.classList.remove('hidden');
@@ -882,13 +860,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Wire list controls
   await wireControlEvents();
-
-  // Compare
-  compareSelectedBtn?.addEventListener('click', openCompareFromSelection);
-
-  // Init
   await updatePlanUI();
   setActiveTab('overview');
 });
